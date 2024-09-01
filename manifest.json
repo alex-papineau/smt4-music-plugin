@@ -1,0 +1,12 @@
+{
+    "manifest_version": 3,
+    "name": "SMT 4 Black Market but its Amazon now",
+    "description": "Make sure you bring more Macca next time!",
+    "version": "1.0.0",
+    "content_scripts": [
+        {
+            "matches": ["https://www.amazon.ca/*" , "https://amazon.com/"],
+            "js": ["Content.js"]
+        }
+    ]
+}
