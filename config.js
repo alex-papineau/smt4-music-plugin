@@ -64,3 +64,24 @@ function getRandomTrackUrl(excludeTrackUrl) {
 
     return newTrackUrl;
 }
+
+// Generate a full Fisher-Yates shuffled list of all track URLs
+function getShuffledTrackUrls() {
+    const urls = CONFIG.TRACKS.map(t => getTrackUrl(t.filename));
+    for (let i = urls.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [urls[i], urls[j]] = [urls[j], urls[i]];
+    }
+    return urls;
+}
+
+// Advance to the next track in the queue, replenishing the deck when empty
+function getNextTrackUrl(currentUrl, queue = []) {
+    let remainingQueue = (queue || []).filter(url => url !== currentUrl);
+    if (remainingQueue.length === 0) {
+        remainingQueue = getShuffledTrackUrls().filter(url => url !== currentUrl);
+    }
+    const nextTrack = remainingQueue.shift();
+    return { nextTrack, remainingQueue };
+}
+
