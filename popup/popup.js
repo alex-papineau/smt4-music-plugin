@@ -1,3 +1,5 @@
+// Connect to background to hold popup focus state
+const popupPort = chrome.runtime.connect({ name: 'popup' });
 
 const volumeSlider = document.getElementById('volume-slider');
 const trackSelect = document.getElementById('track-select');
@@ -12,9 +14,8 @@ const timeDisplay = document.getElementById('time-display');
 const PLAY_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 const PAUSE_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
 
-let isMusicEnabled = true;
-let currentActualPaused = true;
 let isCurrentlyOnAmazon = false;
+
 // Populate track list from CONFIG
 function populateTracks() {
     trackSelect.innerHTML = '';
@@ -26,25 +27,19 @@ function populateTracks() {
     });
 }
 
-// Load settings
-chrome.storage.local.get(['enabled', 'volume', 'track', 'playEverywhere', 'repeat'], (data) => {
+// Load initial settings
+chrome.storage.local.get(['enabled', 'volume', 'track', 'repeat'], (data) => {
     populateTracks();
 
-    isMusicEnabled = data.enabled !== false; // Default to true
-    // Initially assume paused if unknown, it will sync in 500ms
-    updateToggleIcon(isMusicEnabled, true);
+    const isEnabled = data.enabled !== false;
+    updateToggleIcon(isEnabled, true);
 
-    // activeTabToggle.checked = !!data.playEverywhere; // REMOVED
     volumeSlider.value = data.volume || 50;
-
-    let track = data.track || getDefaultTrackUrl();
-    trackSelect.value = track;
+    trackSelect.value = data.track || getDefaultTrackUrl();
 
     updateRepeatState(!!data.repeat);
     checkAmazonTab();
 });
-
-// updateSettings removed to prevent stale global state overwrites
 
 function updateRepeatState(isRepeating) {
     if (isRepeating) {
@@ -54,31 +49,29 @@ function updateRepeatState(isRepeating) {
     }
 }
 
-async function checkAmazonTab() {
-    let isAmazon = false;
-    try {
-        const lastWin = await chrome.windows.getLastFocused({ populate: true, windowTypes: ['normal'] });
-        if (lastWin && lastWin.tabs) {
-            const activeTab = lastWin.tabs.find(t => t.active);
-            const url = activeTab?.url || "";
-            isAmazon = url.includes('amazon.com') || url.includes('amazon.ca') || url.includes('amazon.co.uk') ||
-                url.includes('amazon.de') || url.includes('amazon.fr') || url.includes('amazon.it') ||
-                url.includes('amazon.es') || url.includes('amazon.co.jp');
-        }
-    } catch(e) {
-        console.error("Popup window check failed", e);
-    }
-
-    if (isAmazon) {
-        isCurrentlyOnAmazon = true;
+function updateMarketStatus(isAmazon) {
+    isCurrentlyOnAmazon = !!isAmazon;
+    if (isCurrentlyOnAmazon) {
         marketStatus.textContent = "ONLINE";
         marketStatus.style.color = "#fff";
         marketStatus.style.opacity = "1";
     } else {
-        isCurrentlyOnAmazon = false;
         marketStatus.textContent = "OFFLINE // NO TARGET DETECTED";
         marketStatus.style.color = "var(--accent-red)";
         marketStatus.style.opacity = "0.8";
+    }
+}
+
+async function checkAmazonTab() {
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        const url = tab?.url || "";
+        const isAmazon = url.includes('amazon.com') || url.includes('amazon.ca') || url.includes('amazon.co.uk') ||
+            url.includes('amazon.de') || url.includes('amazon.fr') || url.includes('amazon.it') ||
+            url.includes('amazon.es') || url.includes('amazon.co.jp');
+        updateMarketStatus(isAmazon);
+    } catch (e) {
+        console.error("Popup checkAmazonTab failed", e);
     }
 }
 
@@ -93,22 +86,23 @@ function updateProgress() {
     chrome.runtime.sendMessage({ type: 'GET_PROGRESS' }, (response) => {
         if (chrome.runtime.lastError) return;
         if (response) {
-            const { currentTime, duration, paused } = response;
-            currentActualPaused = paused;
+            const { currentTime, duration, paused, isAmazon } = response;
+            if (isAmazon !== undefined) {
+                updateMarketStatus(isAmazon);
+            }
             if (duration > 0) {
                 progressBar.value = (currentTime / duration) * 100;
                 timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
             }
-            // Update icon in real-time based on actual playback state
             chrome.storage.local.get('enabled', (data) => {
-                updateToggleIcon(!!data.enabled, paused);
+                updateToggleIcon(data.enabled !== false, paused);
             });
         }
     });
 }
 
-// Start polling for progress
-const progressInterval = setInterval(updateProgress, 500);
+// Start polling for progress while popup is open
+const progressInterval = setInterval(updateProgress, 400);
 
 progressBar.addEventListener('input', () => {
     const seekTo = progressBar.value;
@@ -116,13 +110,8 @@ progressBar.addEventListener('input', () => {
 });
 
 function updateToggleIcon(enabled, actualPaused) {
-    // If enabled is false (Power Off), always show Play
-    // If enabled is true (Power On) but context is wrong (actualPaused is true), show Play but maybe dim
-    // If actually playing, show Pause
-    
     toggleBtn.innerHTML = (enabled && !actualPaused) ? PAUSE_ICON : PLAY_ICON;
-    
-    // Use the glow-btn class or similar to show Power state
+
     if (enabled) {
         toggleBtn.classList.add('active-power');
     } else {
@@ -136,63 +125,32 @@ function updateToggleIcon(enabled, actualPaused) {
     }
 }
 
-
 volumeSlider.addEventListener('input', () => {
     chrome.storage.local.set({ volume: parseInt(volumeSlider.value) });
 });
 
 trackSelect.addEventListener('change', () => {
-    isMusicEnabled = true;
-    currentActualPaused = false;
     chrome.storage.local.set({ track: trackSelect.value, enabled: true });
-    if (isCurrentlyOnAmazon) {
-        chrome.runtime.sendMessage({ type: 'FORCE_PLAY' });
-    }
 });
 
-// Keep UI in sync with storage
-chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.track) {
-        trackSelect.value = changes.track.newValue;
-    }
-    if (area === 'local' && changes.enabled) {
-        isMusicEnabled = changes.enabled.newValue;
-    }
-    if (area === 'local' && changes.repeat) {
-        updateRepeatState(changes.repeat.newValue);
-    }
-});
-
-toggleBtn.addEventListener('click', () => {
-    chrome.storage.local.get(['enabled'], () => {
-        if (currentActualPaused) {
-            if (isCurrentlyOnAmazon) {
-                chrome.runtime.sendMessage({ type: 'FORCE_PLAY' });
-            }
-            chrome.storage.local.set({ enabled: true });
-        } else {
-            chrome.runtime.sendMessage({ type: 'FORCE_PAUSE' });
-            chrome.storage.local.set({ enabled: false });
-        }
-    });
+toggleBtn.addEventListener('click', async () => {
+    const data = await chrome.storage.local.get('enabled');
+    const currentlyEnabled = data.enabled !== false;
+    chrome.storage.local.set({ enabled: !currentlyEnabled });
 });
 
 restartBtn.addEventListener('click', () => {
-    isMusicEnabled = true;
     chrome.storage.local.set({ enabled: true });
     chrome.runtime.sendMessage({ type: 'RESTART_TRACK' });
-    
-    // Quick flash effect
+
     restartBtn.style.backgroundColor = "#fff";
     setTimeout(() => restartBtn.style.backgroundColor = "", 150);
 });
 
 randomBtn.addEventListener('click', () => {
-    isMusicEnabled = true;
     chrome.storage.local.set({ enabled: true });
     chrome.runtime.sendMessage({ type: 'RANDOMIZE_TRACK' });
 
-    // Quick flash effect
     randomBtn.style.backgroundColor = "#fff";
     setTimeout(() => randomBtn.style.backgroundColor = "", 150);
 });
@@ -201,4 +159,16 @@ repeatBtn.addEventListener('click', () => {
     const newState = !repeatBtn.classList.contains('active');
     updateRepeatState(newState);
     chrome.storage.local.set({ repeat: newState });
+});
+
+// Sync UI when storage updates externally
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+        if (changes.track) {
+            trackSelect.value = changes.track.newValue;
+        }
+        if (changes.repeat) {
+            updateRepeatState(changes.repeat.newValue);
+        }
+    }
 });
