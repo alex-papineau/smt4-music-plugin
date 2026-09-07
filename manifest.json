@@ -19,12 +19,6 @@
     "host_permissions": [
         "https://*.amazon.com/*",
         "https://*.amazon.ca/*",
-        "https://*.amazon.co.uk/*",
-        "https://*.amazon.de/*",
-        "https://*.amazon.fr/*",
-        "https://*.amazon.it/*",
-        "https://*.amazon.es/*",
-        "https://*.amazon.co.jp/*",
         "https://alex-papineau.github.io/*"
     ],
     "action": {
