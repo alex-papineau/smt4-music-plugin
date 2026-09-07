@@ -13,7 +13,8 @@
     },
     "permissions": [
         "storage",
-        "alarms"
+        "alarms",
+        "tabs"
     ],
     "host_permissions": [
         "https://*.amazon.com/*",
@@ -50,10 +51,10 @@
             ],
             "js": [
                 "config.js",
-                "Content.js"
+                "content.js"
             ],
             "css": [
-                "Content.css"
+                "content.css"
             ]
         }
     ],
