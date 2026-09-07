@@ -14,6 +14,7 @@ const PAUSE_ICON = `<svg width="24" height="24" viewBox="0 0 24 24" fill="curren
 
 let isMusicEnabled = true;
 let currentActualPaused = true;
+let isCurrentlyOnAmazon = false;
 // Populate track list from CONFIG
 function populateTracks() {
     trackSelect.innerHTML = '';
@@ -69,10 +70,12 @@ async function checkAmazonTab() {
     }
 
     if (isAmazon) {
+        isCurrentlyOnAmazon = true;
         marketStatus.textContent = "ONLINE";
         marketStatus.style.color = "#fff";
         marketStatus.style.opacity = "1";
     } else {
+        isCurrentlyOnAmazon = false;
         marketStatus.textContent = "OFFLINE // NO TARGET DETECTED";
         marketStatus.style.color = "var(--accent-red)";
         marketStatus.style.opacity = "0.8";
@@ -140,7 +143,11 @@ volumeSlider.addEventListener('input', () => {
 
 trackSelect.addEventListener('change', () => {
     isMusicEnabled = true;
+    currentActualPaused = false;
     chrome.storage.local.set({ track: trackSelect.value, enabled: true });
+    if (isCurrentlyOnAmazon) {
+        chrome.runtime.sendMessage({ type: 'FORCE_PLAY' });
+    }
 });
 
 // Keep UI in sync with storage
@@ -159,7 +166,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
 toggleBtn.addEventListener('click', () => {
     chrome.storage.local.get(['enabled'], () => {
         if (currentActualPaused) {
-            chrome.runtime.sendMessage({ type: 'FORCE_PLAY' });
+            if (isCurrentlyOnAmazon) {
+                chrome.runtime.sendMessage({ type: 'FORCE_PLAY' });
+            }
             chrome.storage.local.set({ enabled: true });
         } else {
             chrome.runtime.sendMessage({ type: 'FORCE_PAUSE' });

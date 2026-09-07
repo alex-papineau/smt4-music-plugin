@@ -37,7 +37,7 @@ async function updateAudioState(track, volume, enabled) {
             console.log(`Loading track: ${trackUrl}`);
             currentTrack = trackUrl;
             audioPlayer.src = trackUrl;
-            audioPlayer.load();
+            // Removed audioPlayer.load() to prevent AbortErrors when followed instantly by play()
         }
     }
 
@@ -100,6 +100,19 @@ async function syncState() {
         }
     } catch(e) {
         console.error("Window check failed", e);
+    }
+
+    // Fallback: check all active tabs if lastWin approach fails (e.g. during OS focus ambiguity)
+    if (!isActiveTabAmazon) {
+        try {
+            const tabs = await chrome.tabs.query({ active: true });
+            isActiveTabAmazon = tabs.some(t => {
+                const url = t.url || "";
+                return url.includes('amazon.com') || url.includes('amazon.ca') || url.includes('amazon.co.uk') ||
+                    url.includes('amazon.de') || url.includes('amazon.fr') || url.includes('amazon.it') ||
+                    url.includes('amazon.es') || url.includes('amazon.co.jp');
+            });
+        } catch(e) {}
     }
 
     // New logic: Music ONLY plays if enabled, browser is focused, AND on Amazon.
