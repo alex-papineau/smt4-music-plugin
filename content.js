@@ -40,8 +40,20 @@ setInterval(() => {
 }, 15000);
 
 
+// Listen for track changes from background
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'TRACK_CHANGED' && message.trackName) {
+    showSamuraiToast(message.trackName);
+  }
+});
+
 // Create a stylish toast notification
 function showSamuraiToast(trackName) {
+  const existingToast = document.getElementById('smt4-toast');
+  if (existingToast) {
+    existingToast.remove();
+  }
+
   const toast = document.createElement('div');
   toast.id = 'smt4-toast';
   const header = document.createElement('div');
@@ -62,3 +74,4 @@ function showSamuraiToast(trackName) {
     setTimeout(() => toast.remove(), 1000);
   }, 4000);
 }
+
